@@ -7,7 +7,7 @@ Original file is located at
     https://colab.research.google.com/drive/19mddwegh-XQc5fTkJ5vZKEnF-7iOdK7L
 """
 
-# app.py - Streamlit Churn Prediction Dashboard (compatible with churn_model.pkl)
+# app.py – Streamlit Customer Churn Prediction Dashboard
 
 import streamlit as st
 import pandas as pd
@@ -15,59 +15,87 @@ import joblib
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-# Load model
-model = joblib.load('streamlit_app/churn_model.pkl')
+st.set_page_config(page_title="Churn Dashboard", layout="centered")
 
-# Title
+# --- Title ---
 st.title("📉 Customer Churn Prediction Dashboard")
+st.markdown("Analyze and predict customer churn from your subscription business data.")
 
-# File uploader
-uploaded_file = st.file_uploader("📂 Upload your customer CSV file", type=["csv"])
+# --- Load model ---
+try:
+    model = joblib.load("streamlit_app/churn_model_compressed.pkl")
+except:
+    st.error("❌ Model file not found. Please ensure 'churn_model_compressed.pkl' is in the directory.")
+    st.stop()
+
+# --- File Upload ---
+uploaded_file = st.file_uploader("📁 Upload your customer CSV", type=["csv"])
 
 if uploaded_file:
     df = pd.read_csv(uploaded_file)
     st.success("✅ File uploaded successfully!")
 
-    st.subheader("📊 Raw Data Preview")
-    st.write(df.head())
+    # --- Preview Data ---
+    st.subheader("🔍 Raw Data Preview")
+    st.dataframe(df.head(10), use_container_width=True)
 
-    # Show churn analytics if 'enrolled' column is present
-    st.subheader("📈 Churn Analytics")
-    if 'enrolled' in df.columns:
-        churn_counts = df['enrolled'].value_counts()
+    # --- Gender Mapping (0 → Female, 1 → Male) ---
+    if 'Gender' in df.columns:
+        df['Gender'] = df['Gender'].map({0: 'Female', 1: 'Male'})
+
+    # --- Churn Column Pie Chart (if exists) ---
+    if 'Churn' in df.columns:
+        st.subheader("📊 Existing Churn Distribution")
+        churn_counts = df['Churn'].value_counts()
         fig, ax = plt.subplots()
-        sns.barplot(x=churn_counts.index, y=churn_counts.values, palette="Set2", ax=ax)
-        ax.set_title("Enrolled (Churn Proxy) Distribution")
-        ax.set_xlabel("Enrolled")
-        ax.set_ylabel("Count")
+        ax.pie(churn_counts, labels=churn_counts.index, autopct='%1.1f%%', colors=['#ff9999','#66b3ff'], startangle=90)
+        ax.axis('equal')
         st.pyplot(fig)
 
-    # Predict churn
-    st.subheader("🔮 Churn Predictions")
-
+    # --- Churn Prediction ---
+    st.subheader("🔮 Predict Churn")
     try:
-        # Drop columns not used in model training
-        input_df = df.drop(columns=['user', 'first_open', 'screen_list', 'enrolled_date', 'enrolled'], errors='ignore')
+        input_df = df.copy()
+        drop_cols = ['Churn', 'raw_data', 'user', 'screen_list', 'first_open', 'enrolled_date']
+        input_df = input_df.drop(columns=[col for col in drop_cols if col in input_df.columns], errors='ignore')
 
-        # Convert time string to hour
-        if 'hour' in input_df.columns:
-            input_df['hour'] = input_df['hour'].astype(str).str.strip()
+        # Fix hour column if it's still string
+        if 'hour' in input_df.columns and input_df['hour'].dtype == 'object':
             input_df['hour'] = pd.to_datetime(input_df['hour'], format='%H:%M:%S', errors='coerce').dt.hour.fillna(0)
 
-        # Convert boolean-like columns
+        # Convert boolean-like columns to int
         for col in ['minigame', 'used_premium_feature', 'liked']:
             if col in input_df.columns:
                 input_df[col] = input_df[col].astype(int)
+
+        # Map Gender for prediction
+        if 'Gender' in input_df.columns:
+            input_df['Gender'] = input_df['Gender'].map({'Male': 1, 'Female': 0})
 
         # Predict
         predictions = model.predict(input_df)
         df['Predicted_Churn'] = predictions
 
-        st.write("📋 Prediction Summary")
-        st.write(df['Predicted_Churn'].value_counts().rename_axis('Churn').reset_index(name='Count'))
+        # Show counts
+        st.success("✅ Predictions completed!")
 
-        st.subheader("📥 Download Results")
-        st.download_button("Download CSV with Predictions", df.to_csv(index=False), file_name="churn_predictions.csv")
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("🔴 Churned", int((df['Predicted_Churn'] == 1).sum()))
+        with col2:
+            st.metric("🟢 Retained", int((df['Predicted_Churn'] == 0).sum()))
+
+        # Pie chart of predictions
+        st.subheader("📊 Predicted Churn Breakdown")
+        pred_counts = df['Predicted_Churn'].value_counts()
+        fig2, ax2 = plt.subplots()
+        ax2.pie(pred_counts, labels=['Retained (0)', 'Churn (1)'], autopct='%1.1f%%', colors=['#90ee90', '#ff6961'])
+        ax2.axis('equal')
+        st.pyplot(fig2)
+
+        # Download
+        st.subheader("⬇️ Download Results")
+        st.download_button("📥 Download CSV with Predictions", df.to_csv(index=False), file_name="predictions.csv")
 
     except Exception as e:
         st.error(f"❌ Prediction failed: {e}")
