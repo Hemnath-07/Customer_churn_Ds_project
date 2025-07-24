@@ -23,7 +23,7 @@ st.markdown("Analyze and predict customer churn from your subscription business 
 
 # --- Load model ---
 try:
-    model = joblib.load("streamlit_app/churn_model_compressed.pkl")
+    model = joblib.load("streamlit_app/churn_model.pkl")
 except:
     st.error("❌ Model file not found. Please ensure 'churn_model_compressed.pkl' is in the directory.")
     st.stop()
