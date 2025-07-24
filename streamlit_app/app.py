@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 # Load model
-model = joblib.load('churn_model.pkl')
+model = joblib.load('streamlit_app/churn_model.pkl')
 
 # Title
 st.title("📉 Customer Churn Prediction Dashboard")
